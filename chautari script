@@ -1,0 +1,826 @@
+--[[
+    Auto Farm (Fish Killer + Chest Hunter)
+    Made by Mugi fucker
+]]
+
+repeat task.wait() until game:IsLoaded()
+
+local Players = game:GetService("Players")
+local Workspace = game:GetService("Workspace")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local UserInputService = game:GetService("UserInputService")
+
+local LocalPlayer = Players.LocalPlayer
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- ====================== DEFAULTS & SETTINGS ======================
+
+local DEFAULTS = {
+    CastHoldTime = 0.9,
+    CastCooldown = 0.0,
+    TapCooldown = 0.001,
+    KeyHoldTime = 0.001,
+    ClickDelay = 0.001,
+    ScanInterval = 0.01,
+    FishLimit = 50,
+}
+
+local SETTINGS = {}
+
+for k, v in pairs(DEFAULTS) do
+    local ok, saved = pcall(function()
+        return typeof(readfile) == "function" and tonumber(readfile("autofish_" .. k .. ".txt"))
+    end)
+    SETTINGS[k] = (ok and saved) or v
+end
+
+local function saveSetting(key)
+    pcall(function()
+        if typeof(writefile) == "function" then
+            writefile("autofish_" .. key .. ".txt", tostring(SETTINGS[key]))
+        end
+    end)
+end
+
+-- ====================== STATE ======================
+
+local State = {
+    DetectedKey = "None",
+    Status = "Idle",
+    IsRunning = false,          -- Fish
+    FishCaught = 0,
+    IsMinimized = false,
+    IsCharging = false,
+    StartTime = 0,
+    ElapsedTime = 0,
+
+    ChestRunning = false,       -- Chest
+    ChestStatus = "Idle",
+}
+
+-- ====================== MAIN GUI ======================
+
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "MugiAutoFarm"
+ScreenGui.ResetOnSpawn = false
+ScreenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+ScreenGui.Parent = PlayerGui
+
+local Main = Instance.new("Frame")
+Main.Name = "Main"
+Main.Size = UDim2.fromOffset(360, 540)
+Main.Position = UDim2.new(0.03, 0, 0.2, 0)
+Main.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
+Main.BorderSizePixel = 0
+Main.Active = true
+Main.Parent = ScreenGui
+
+Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 14)
+
+-- Subtle border
+local Stroke = Instance.new("UIStroke")
+Stroke.Color = Color3.fromRGB(45, 45, 60)
+Stroke.Thickness = 1
+Stroke.Parent = Main
+
+-- ========== TOP BAR ==========
+local TopBar = Instance.new("Frame")
+TopBar.Size = UDim2.new(1, 0, 0, 42)
+TopBar.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
+TopBar.BorderSizePixel = 0
+TopBar.Parent = Main
+
+Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 14)
+
+-- Fix bottom corners of top bar
+local TopBarFix = Instance.new("Frame")
+TopBarFix.Size = UDim2.new(1, 0, 0, 14)
+TopBarFix.Position = UDim2.new(0, 0, 1, -14)
+TopBarFix.BackgroundColor3 = Color3.fromRGB(26, 26, 34)
+TopBarFix.BorderSizePixel = 0
+TopBarFix.Parent = TopBar
+
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -100, 1, 0)
+Title.Position = UDim2.fromOffset(14, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "🎣 Auto Farm  •  Made by Mugi fucker"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.TextSize = 14
+Title.Font = Enum.Font.GothamBold
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = TopBar
+
+-- Minimize
+local MinimizeBtn = Instance.new("TextButton")
+MinimizeBtn.Size = UDim2.fromOffset(28, 28)
+MinimizeBtn.Position = UDim2.new(1, -70, 0.5, -14)
+MinimizeBtn.BackgroundColor3 = Color3.fromRGB(255, 172, 92)
+MinimizeBtn.Text = "−"
+MinimizeBtn.TextColor3 = Color3.new(1, 1, 1)
+MinimizeBtn.TextSize = 20
+MinimizeBtn.Font = Enum.Font.GothamBold
+MinimizeBtn.Parent = TopBar
+Instance.new("UICorner", MinimizeBtn).CornerRadius = UDim.new(0, 7)
+
+-- Close
+local CloseBtn = Instance.new("TextButton")
+CloseBtn.Size = UDim2.fromOffset(28, 28)
+CloseBtn.Position = UDim2.new(1, -36, 0.5, -14)
+CloseBtn.BackgroundColor3 = Color3.fromRGB(220, 70, 70)
+CloseBtn.Text = "✕"
+CloseBtn.TextColor3 = Color3.new(1, 1, 1)
+CloseBtn.TextSize = 14
+CloseBtn.Font = Enum.Font.GothamBold
+CloseBtn.Parent = TopBar
+Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 7)
+
+-- ========== TABS ==========
+local TabBar = Instance.new("Frame")
+TabBar.Size = UDim2.new(1, -24, 0, 36)
+TabBar.Position = UDim2.fromOffset(12, 50)
+TabBar.BackgroundTransparency = 1
+TabBar.Parent = Main
+
+local FishTabBtn = Instance.new("TextButton")
+FishTabBtn.Size = UDim2.new(0.5, -4, 1, 0)
+FishTabBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+FishTabBtn.Text = "🐟 Fish Killer"
+FishTabBtn.TextColor3 = Color3.new(1, 1, 1)
+FishTabBtn.TextSize = 13
+FishTabBtn.Font = Enum.Font.GothamBold
+FishTabBtn.Parent = TabBar
+Instance.new("UICorner", FishTabBtn).CornerRadius = UDim.new(0, 8)
+
+local ChestTabBtn = Instance.new("TextButton")
+ChestTabBtn.Size = UDim2.new(0.5, -4, 1, 0)
+ChestTabBtn.Position = UDim2.new(0.5, 4, 0, 0)
+ChestTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+ChestTabBtn.Text = "📦 Chest Hunter"
+ChestTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+ChestTabBtn.TextSize = 13
+ChestTabBtn.Font = Enum.Font.GothamBold
+ChestTabBtn.Parent = TabBar
+Instance.new("UICorner", ChestTabBtn).CornerRadius = UDim.new(0, 8)
+
+-- ========== CONTENT CONTAINERS ==========
+local Content = Instance.new("Frame")
+Content.Size = UDim2.new(1, -24, 1, -100)
+Content.Position = UDim2.fromOffset(12, 94)
+Content.BackgroundTransparency = 1
+Content.Parent = Main
+
+local FishContent = Instance.new("Frame")
+FishContent.Size = UDim2.fromScale(1, 1)
+FishContent.BackgroundTransparency = 1
+FishContent.Visible = true
+FishContent.Parent = Content
+
+local ChestContent = Instance.new("Frame")
+ChestContent.Size = UDim2.fromScale(1, 1)
+ChestContent.BackgroundTransparency = 1
+ChestContent.Visible = false
+ChestContent.Parent = Content
+
+-- ====================== FISH KILLER UI ======================
+
+local KeyLabel = Instance.new("TextLabel")
+KeyLabel.Size = UDim2.new(1, 0, 0, 30)
+KeyLabel.BackgroundColor3 = Color3.fromRGB(32, 32, 42)
+KeyLabel.Text = "Key: None"
+KeyLabel.TextColor3 = Color3.fromRGB(100, 220, 140)
+KeyLabel.TextSize = 13
+KeyLabel.Font = Enum.Font.GothamMedium
+KeyLabel.Parent = FishContent
+Instance.new("UICorner", KeyLabel).CornerRadius = UDim.new(0, 8)
+
+local StatusLabel = Instance.new("TextLabel")
+StatusLabel.Size = UDim2.new(1, 0, 0, 18)
+StatusLabel.Position = UDim2.fromOffset(0, 36)
+StatusLabel.BackgroundTransparency = 1
+StatusLabel.Text = "Status: Idle"
+StatusLabel.TextColor3 = Color3.fromRGB(180, 180, 190)
+StatusLabel.TextSize = 12
+StatusLabel.Font = Enum.Font.Gotham
+StatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+StatusLabel.Parent = FishContent
+
+local TimerLabel = Instance.new("TextLabel")
+TimerLabel.Size = UDim2.new(1, 0, 0, 18)
+TimerLabel.Position = UDim2.fromOffset(0, 54)
+TimerLabel.BackgroundTransparency = 1
+TimerLabel.Text = "Time: 00:00"
+TimerLabel.TextColor3 = Color3.fromRGB(255, 172, 92)
+TimerLabel.TextSize = 12
+TimerLabel.Font = Enum.Font.GothamBold
+TimerLabel.TextXAlignment = Enum.TextXAlignment.Left
+TimerLabel.Parent = FishContent
+
+-- Settings
+local SettingsFrame = Instance.new("Frame")
+SettingsFrame.Size = UDim2.new(1, 0, 0, 210)
+SettingsFrame.Position = UDim2.fromOffset(0, 78)
+SettingsFrame.BackgroundColor3 = Color3.fromRGB(28, 28, 38)
+SettingsFrame.BorderSizePixel = 0
+SettingsFrame.Parent = FishContent
+Instance.new("UICorner", SettingsFrame).CornerRadius = UDim.new(0, 10)
+
+local Scroll = Instance.new("ScrollingFrame")
+Scroll.Size = UDim2.new(1, -12, 1, -12)
+Scroll.Position = UDim2.fromOffset(6, 6)
+Scroll.BackgroundTransparency = 1
+Scroll.BorderSizePixel = 0
+Scroll.ScrollBarThickness = 3
+Scroll.ScrollBarImageColor3 = Color3.fromRGB(80, 80, 100)
+Scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Scroll.Parent = SettingsFrame
+
+local Layout = Instance.new("UIListLayout")
+Layout.Padding = UDim.new(0, 5)
+Layout.SortOrder = Enum.SortOrder.LayoutOrder
+Layout.Parent = Scroll
+
+local settingRows = {}
+
+local function makeSettingRow(name, labelText, min, max, step, order, isWholeNumber)
+    local Row = Instance.new("Frame")
+    Row.Size = UDim2.new(1, -4, 0, 30)
+    Row.BackgroundColor3 = Color3.fromRGB(38, 38, 50)
+    Row.BorderSizePixel = 0
+    Row.LayoutOrder = order
+    Row.Parent = Scroll
+    Instance.new("UICorner", Row).CornerRadius = UDim.new(0, 7)
+
+    local Lbl = Instance.new("TextLabel")
+    Lbl.Size = UDim2.new(1, -115, 1, 0)
+    Lbl.Position = UDim2.fromOffset(10, 0)
+    Lbl.BackgroundTransparency = 1
+    Lbl.Text = labelText
+    Lbl.TextColor3 = Color3.fromRGB(200, 200, 220)
+    Lbl.TextSize = 12
+    Lbl.Font = Enum.Font.Gotham
+    Lbl.TextXAlignment = Enum.TextXAlignment.Left
+    Lbl.Parent = Row
+
+    local Minus = Instance.new("TextButton")
+    Minus.Size = UDim2.fromOffset(24, 24)
+    Minus.Position = UDim2.new(1, -100, 0.5, -12)
+    Minus.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    Minus.Text = "−"
+    Minus.TextColor3 = Color3.new(1, 1, 1)
+    Minus.TextSize = 16
+    Minus.Font = Enum.Font.GothamBold
+    Minus.Parent = Row
+    Instance.new("UICorner", Minus).CornerRadius = UDim.new(0, 6)
+
+    local Val = Instance.new("TextLabel")
+    Val.Size = UDim2.fromOffset(48, 24)
+    Val.Position = UDim2.new(1, -74, 0.5, -12)
+    Val.BackgroundTransparency = 1
+    Val.Text = isWholeNumber and tostring(math.floor(SETTINGS[name])) or string.format("%.3f", SETTINGS[name])
+    Val.TextColor3 = Color3.fromRGB(100, 220, 140)
+    Val.TextSize = 12
+    Val.Font = Enum.Font.GothamBold
+    Val.TextXAlignment = Enum.TextXAlignment.Right
+    Val.Parent = Row
+
+    local Plus = Instance.new("TextButton")
+    Plus.Size = UDim2.fromOffset(24, 24)
+    Plus.Position = UDim2.new(1, -24, 0.5, -12)
+    Plus.BackgroundColor3 = Color3.fromRGB(60, 60, 80)
+    Plus.Text = "+"
+    Plus.TextColor3 = Color3.new(1, 1, 1)
+    Plus.TextSize = 16
+    Plus.Font = Enum.Font.GothamBold
+    Plus.Parent = Row
+    Instance.new("UICorner", Plus).CornerRadius = UDim.new(0, 6)
+
+    local function refresh()
+        Val.Text = isWholeNumber and tostring(math.floor(SETTINGS[name])) or string.format("%.3f", SETTINGS[name])
+        saveSetting(name)
+    end
+
+    Minus.MouseButton1Click:Connect(function()
+        SETTINGS[name] = math.max(min, math.floor((SETTINGS[name] - step) * 1000 + 0.5) / 1000)
+        refresh()
+    end)
+
+    Plus.MouseButton1Click:Connect(function()
+        SETTINGS[name] = math.min(max, math.floor((SETTINGS[name] + step) * 1000 + 0.5) / 1000)
+        refresh()
+    end)
+
+    settingRows[name] = refresh
+end
+
+makeSettingRow("FishLimit", "Fish Limit (0 = Inf)", 0, 9999, 1, 1, true)
+makeSettingRow("CastHoldTime", "Cast Hold Time", 0.1, 5, 0.05, 2)
+makeSettingRow("CastCooldown", "Cast Cooldown", 0, 5, 0.05, 3)
+makeSettingRow("TapCooldown", "Minigame Tap Speed", 0, 0.5, 0.001, 4)
+makeSettingRow("KeyHoldTime", "Key Press Speed", 0, 0.5, 0.001, 5)
+makeSettingRow("ClickDelay", "Click Delay", 0, 0.5, 0.001, 6)
+makeSettingRow("ScanInterval", "Scan Interval", 0, 0.5, 0.005, 7)
+
+-- Fish Buttons
+local FishToggle = Instance.new("TextButton")
+FishToggle.Size = UDim2.new(1, 0, 0, 44)
+FishToggle.Position = UDim2.fromOffset(0, 300)
+FishToggle.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+FishToggle.Text = "START FISHING"
+FishToggle.TextColor3 = Color3.new(1, 1, 1)
+FishToggle.TextSize = 15
+FishToggle.Font = Enum.Font.GothamBold
+FishToggle.Parent = FishContent
+Instance.new("UICorner", FishToggle).CornerRadius = UDim.new(0, 10)
+
+local ResetBtn = Instance.new("TextButton")
+ResetBtn.Size = UDim2.new(1, 0, 0, 32)
+ResetBtn.Position = UDim2.fromOffset(0, 352)
+ResetBtn.BackgroundColor3 = Color3.fromRGB(55, 55, 70)
+ResetBtn.Text = "Reset to Defaults"
+ResetBtn.TextColor3 = Color3.new(1, 1, 1)
+ResetBtn.TextSize = 12
+ResetBtn.Font = Enum.Font.GothamBold
+ResetBtn.Parent = FishContent
+Instance.new("UICorner", ResetBtn).CornerRadius = UDim.new(0, 8)
+
+-- ====================== CHEST HUNTER UI ======================
+
+local ChestStatusLabel = Instance.new("TextLabel")
+ChestStatusLabel.Size = UDim2.new(1, 0, 0, 36)
+ChestStatusLabel.BackgroundColor3 = Color3.fromRGB(32, 32, 42)
+ChestStatusLabel.Text = "Status: Idle"
+ChestStatusLabel.TextColor3 = Color3.fromRGB(180, 180, 190)
+ChestStatusLabel.TextSize = 14
+ChestStatusLabel.Font = Enum.Font.GothamMedium
+ChestStatusLabel.Parent = ChestContent
+Instance.new("UICorner", ChestStatusLabel).CornerRadius = UDim.new(0, 8)
+
+local ChestInfo = Instance.new("TextLabel")
+ChestInfo.Size = UDim2.new(1, 0, 0, 60)
+ChestInfo.Position = UDim2.fromOffset(0, 48)
+ChestInfo.BackgroundTransparency = 1
+ChestInfo.Text = "Automatically teleports to every chest ( aafno risk ma use gar mugi)."
+ChestInfo.TextColor3 = Color3.fromRGB(150, 150, 165)
+ChestInfo.TextSize = 12
+ChestInfo.Font = Enum.Font.Gotham
+ChestInfo.TextWrapped = true
+ChestInfo.TextYAlignment = Enum.TextYAlignment.Top
+ChestInfo.Parent = ChestContent
+
+local ChestToggle = Instance.new("TextButton")
+ChestToggle.Size = UDim2.new(1, 0, 0, 48)
+ChestToggle.Position = UDim2.fromOffset(0, 80)
+ChestToggle.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+ChestToggle.Text = "START CHEST HUNTER"
+ChestToggle.TextColor3 = Color3.new(1, 1, 1)
+ChestToggle.TextSize = 15
+ChestToggle.Font = Enum.Font.GothamBold
+ChestToggle.Parent = ChestContent
+Instance.new("UICorner", ChestToggle).CornerRadius = UDim.new(0, 10)
+
+-- ====================== DRAGGING ======================
+
+local dragging, dragStart, startPos
+
+TopBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = true
+        dragStart = input.Position
+        startPos = Main.Position
+    end
+end)
+
+TopBar.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+        dragging = false
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if dragging and (input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch) then
+        local delta = input.Position - dragStart
+        Main.Position = UDim2.new(
+            startPos.X.Scale, startPos.X.Offset + delta.X,
+            startPos.Y.Scale, startPos.Y.Offset + delta.Y
+        )
+    end
+end)
+
+-- ====================== MINIMIZE / CLOSE ======================
+
+local originalSize = Main.Size
+
+MinimizeBtn.MouseButton1Click:Connect(function()
+    State.IsMinimized = not State.IsMinimized
+
+    if State.IsMinimized then
+        Main.Size = UDim2.fromOffset(360, 42)
+        MinimizeBtn.Text = "+"
+        Title.Text = "🎣 Auto Farm (Minimized)  •  Mugi fucker"
+
+        for _, child in ipairs(Main:GetChildren()) do
+            if child ~= TopBar and not child:IsA("UICorner") and not child:IsA("UIStroke") then
+                child.Visible = false
+            end
+        end
+    else
+        Main.Size = originalSize
+        MinimizeBtn.Text = "−"
+        Title.Text = "🎣 Auto Farm  •  Made by Mugi fucker"
+
+        for _, child in ipairs(Main:GetChildren()) do
+            if child ~= TopBar and not child:IsA("UICorner") and not child:IsA("UIStroke") then
+                child.Visible = true
+            end
+        end
+    end
+end)
+
+CloseBtn.MouseButton1Click:Connect(function()
+    State.IsRunning = false
+    State.ChestRunning = false
+    ScreenGui:Destroy()
+end)
+
+-- ====================== TAB SWITCHING ======================
+
+local function switchTab(tab)
+    if tab == "Fish" then
+        FishContent.Visible = true
+        ChestContent.Visible = false
+        FishTabBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+        FishTabBtn.TextColor3 = Color3.new(1, 1, 1)
+        ChestTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+        ChestTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+    else
+        FishContent.Visible = false
+        ChestContent.Visible = true
+        ChestTabBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+        ChestTabBtn.TextColor3 = Color3.new(1, 1, 1)
+        FishTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+        FishTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+    end
+end
+
+FishTabBtn.MouseButton1Click:Connect(function() switchTab("Fish") end)
+ChestTabBtn.MouseButton1Click:Connect(function() switchTab("Chest") end)
+
+-- ====================== FISH LOGIC (kept accurate) ======================
+
+local function updateUI()
+    KeyLabel.Text = "Key: " .. State.DetectedKey
+    if SETTINGS.FishLimit > 0 then
+        StatusLabel.Text = "Status: " .. State.Status .. "  (" .. State.FishCaught .. "/" .. SETTINGS.FishLimit .. ")"
+    else
+        StatusLabel.Text = "Status: " .. State.Status .. "  (Caught: " .. State.FishCaught .. ")"
+    end
+end
+
+local function updateTimer()
+    if not State.IsRunning then return end
+    State.ElapsedTime = os.clock() - State.StartTime
+    local mins = math.floor(State.ElapsedTime / 60)
+    local secs = math.floor(State.ElapsedTime % 60)
+    TimerLabel.Text = string.format("Time: %02d:%02d", mins, secs)
+end
+
+local keyMap = { W = Enum.KeyCode.W, A = Enum.KeyCode.A, S = Enum.KeyCode.S, D = Enum.KeyCode.D }
+
+local function pressKey(keyCode)
+    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+    task.wait(SETTINGS.KeyHoldTime)
+    VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+end
+
+local function mouseDown(x, y)
+    VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
+end
+
+local function mouseUp(x, y)
+    VirtualInputManager:SendMouseButtonEvent(x, y, 0, false, game, 1)
+end
+
+local function clickObject(obj)
+    if not obj or not obj.Visible then return end
+    local size = obj.AbsoluteSize
+    if size.X < 5 or size.Y < 5 then return end
+    local pos = obj.AbsolutePosition + (size / 2)
+    mouseDown(pos.X, pos.Y)
+    task.wait(SETTINGS.ClickDelay)
+    mouseUp(pos.X, pos.Y)
+end
+
+local function holdOnScreen(holdTime)
+    local cam = workspace.CurrentCamera
+    local vp = cam and cam.ViewportSize or Vector2.new(800, 600)
+    local x, y = vp.X * 0.5, vp.Y * 0.5
+    VirtualInputManager:SendMouseMoveEvent(x, y, game)
+    task.wait(0.03)
+    mouseDown(x, y)
+    local t0 = os.clock()
+    while os.clock() - t0 < holdTime do task.wait() end
+    mouseUp(x, y)
+end
+
+local function getFishingGui()
+    return PlayerGui:FindFirstChild("FishingGui")
+end
+
+local function norm(t)
+    return string.upper(string.gsub(t, "%s+", ""))
+end
+
+local function isShown(obj)
+    local cur = obj
+    while cur and cur ~= PlayerGui do
+        if cur:IsA("GuiObject") and not cur.Visible then return false end
+        if cur:IsA("ScreenGui") and not cur.Enabled then return false end
+        cur = cur.Parent
+    end
+    return cur == PlayerGui
+end
+
+local castButton, castLabel = nil, nil
+local lastScan = 0
+local scanning = false
+
+local function scanForCast()
+    for _, v in ipairs(PlayerGui:GetDescendants()) do
+        if v.Parent and (v:IsA("TextLabel") or v:IsA("TextButton"))
+            and norm(v.Text) == "CAST"
+            and not v:IsDescendantOf(ScreenGui) then
+
+            local obj = v
+            while obj and obj ~= PlayerGui and not obj:IsA("GuiButton") do
+                obj = obj.Parent
+            end
+            castLabel = v
+            castButton = (obj and obj ~= PlayerGui) and obj or v
+            return
+        end
+    end
+end
+
+local function findCastButton()
+    if castLabel and castLabel:IsDescendantOf(PlayerGui) then
+        if norm(castLabel.Text) == "CAST" and isShown(castLabel) then
+            return castButton
+        end
+        return nil
+    end
+    castLabel, castButton = nil, nil
+    if not scanning and os.clock() - lastScan > 0.5 then
+        scanning = true
+        lastScan = os.clock()
+        pcall(scanForCast)
+        scanning = false
+    end
+    return nil
+end
+
+local tapCache = nil
+local function getTapMobile(gui)
+    if tapCache and tapCache:IsDescendantOf(gui) then return tapCache end
+    tapCache = gui:FindFirstChild("TapMobile", true)
+    return tapCache
+end
+
+local function getFishingFrame()
+    local fishingGui = PlayerGui:FindFirstChild("FishingGui")
+    if not fishingGui then return nil end
+    return fishingGui:FindFirstChild("Fishing", true)
+end
+
+local function checkFishCount()
+    local fishingFrame = getFishingFrame()
+    local visible = fishingFrame ~= nil and isShown(fishingFrame)
+
+    if visible then
+        if not State.IsCharging then
+            State.IsCharging = true
+            State.FishCaught += 1
+            print("[AutoFish] Fish counted:", State.FishCaught)
+            updateUI()
+        end
+    else
+        State.IsCharging = false
+    end
+
+    if SETTINGS.FishLimit > 0 and State.FishCaught >= SETTINGS.FishLimit then
+        State.IsRunning = false
+        State.Status = "Limit Reached!"
+        FishToggle.Text = "START FISHING"
+        FishToggle.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+        updateUI()
+        print("[AutoFish] Fish limit reached!")
+        return true
+    end
+    return false
+end
+
+local function detectAndAct()
+    if checkFishCount() then return end
+
+    local castBtn = findCastButton()
+    if castBtn then
+        State.DetectedKey = "CAST"
+        State.Status = "Casting..."
+        updateUI()
+        holdOnScreen(SETTINGS.CastHoldTime)
+        if SETTINGS.CastCooldown > 0 then task.wait(SETTINGS.CastCooldown) end
+        return
+    end
+
+    local fishingGui = getFishingGui()
+    if not fishingGui then
+        State.DetectedKey = "None"
+        State.Status = "Waiting for bite..."
+        updateUI()
+        return
+    end
+
+    local tapMobile = getTapMobile(fishingGui)
+    if tapMobile and isShown(tapMobile) then
+        local keyAttr = tapMobile:GetAttribute("Key")
+        if typeof(keyAttr) == "string" then keyAttr = string.upper(keyAttr) end
+
+        if keyAttr and keyMap[keyAttr] then
+            State.DetectedKey = keyAttr
+            State.Status = "Spamming " .. keyAttr
+            updateUI()
+            pressKey(keyMap[keyAttr])
+        else
+            State.DetectedKey = "TAP"
+            State.Status = "Spamming Tap"
+            updateUI()
+            clickObject(tapMobile)
+        end
+
+        if SETTINGS.TapCooldown > 0 then task.wait(SETTINGS.TapCooldown) end
+        return
+    end
+
+    State.DetectedKey = "None"
+    State.Status = "Waiting..."
+    updateUI()
+end
+
+local function fishMainLoop()
+    while State.IsRunning do
+        updateTimer()
+        local ok, err = pcall(detectAndAct)
+        if not ok then
+            warn("[AutoFish] Error:", err)
+            State.Status = "Error"
+            updateUI()
+        end
+        task.wait(SETTINGS.ScanInterval > 0 and SETTINGS.ScanInterval or 0)
+    end
+    State.DetectedKey = "None"
+    updateUI()
+end
+
+-- ====================== CHEST LOGIC ======================
+
+local chestsFolder = Workspace:WaitForChild("Chests", 10)
+
+local function getCharacterParts()
+    local character = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+    local hrp = character:WaitForChild("HumanoidRootPart")
+    local humanoid = character:WaitForChild("Humanoid")
+    return character, hrp, humanoid
+end
+
+local function holdE(duration)
+    ChestStatusLabel.Text = string.format("Status: Holding E (%.1fs)...", duration)
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+    task.wait(duration)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+end
+
+local function getTargetPart(item)
+    return item:FindFirstChild("Root")
+        or item:FindFirstChild("KeyHole")
+        or item:FindFirstChild("Hitbox")
+        or item:FindFirstChild("Main")
+        or item:FindFirstChild("Chest")
+        or (item:IsA("Model") and item.PrimaryPart)
+        or item:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function tryOpenChest(item)
+    local targetPart = getTargetPart(item)
+    if not targetPart then
+        ChestStatusLabel.Text = "Status: No part found in " .. item.Name
+        return false
+    end
+
+    local _, rootPart, humanoid = getCharacterParts()
+    if humanoid.Health <= 0 then return false end
+
+    ChestStatusLabel.Text = "Status: Going to " .. item.Name
+    rootPart.CFrame = targetPart.CFrame * CFrame.new(0, 3, 0)
+    task.wait(0.4)
+
+    local prompt = item:FindFirstChildWhichIsA("ProximityPrompt", true)
+    if prompt then
+        ChestStatusLabel.Text = "Status: Opening " .. item.Name
+        if typeof(fireproximityprompt) == "function" then
+            fireproximityprompt(prompt)
+            task.wait(0.25)
+        else
+            rootPart.CFrame = targetPart.CFrame * CFrame.new(0, 2.5, 0)
+            task.wait(0.15)
+            holdE(math.max(prompt.HoldDuration, 0.8))
+        end
+    else
+        holdE(1.2)
+    end
+
+    task.wait(0.4)
+    return true
+end
+
+local function chestMainLoop()
+    while State.ChestRunning do
+        if not chestsFolder or not chestsFolder.Parent then
+            ChestStatusLabel.Text = "Status: workspace.Chests missing!"
+            break
+        end
+
+        local found = false
+        for _, item in ipairs(chestsFolder:GetChildren()) do
+            if not State.ChestRunning then break end
+            if item:IsA("Model") or item:IsA("Folder") then
+                found = true
+                tryOpenChest(item)
+            end
+        end
+
+        if not found then
+            ChestStatusLabel.Text = "Status: Waiting for chests..."
+            task.wait(2)
+        else
+            ChestStatusLabel.Text = "Status: Cycle done, looping..."
+            task.wait(0.8)
+        end
+    end
+
+    ChestStatusLabel.Text = "Status: Stopped"
+    ChestToggle.Text = "START CHEST HUNTER"
+    ChestToggle.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+    State.ChestRunning = false
+end
+
+-- ====================== BUTTON CONNECTIONS ======================
+
+ResetBtn.MouseButton1Click:Connect(function()
+    for k, v in pairs(DEFAULTS) do
+        SETTINGS[k] = v
+        if settingRows[k] then settingRows[k]() end
+    end
+end)
+
+FishToggle.MouseButton1Click:Connect(function()
+    State.IsRunning = not State.IsRunning
+
+    if State.IsRunning then
+        State.FishCaught = 0
+        State.IsCharging = false
+        State.StartTime = os.clock()
+        State.ElapsedTime = 0
+        FishToggle.Text = "STOP FISHING"
+        FishToggle.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+        State.Status = "Running..."
+        updateUI()
+        updateTimer()
+        task.spawn(fishMainLoop)
+    else
+        FishToggle.Text = "START FISHING"
+        FishToggle.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+        State.Status = "Stopped"
+        updateUI()
+    end
+end)
+
+ChestToggle.MouseButton1Click:Connect(function()
+    State.ChestRunning = not State.ChestRunning
+
+    if State.ChestRunning then
+        ChestToggle.Text = "STOP CHEST HUNTER"
+        ChestToggle.BackgroundColor3 = Color3.fromRGB(231, 76, 60)
+        ChestStatusLabel.Text = "Status: Running..."
+        task.spawn(chestMainLoop)
+    else
+        ChestToggle.Text = "START CHEST HUNTER"
+        ChestToggle.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
+        ChestStatusLabel.Text = "Status: Stopped"
+    end
+end)
+
+-- Init
+updateUI()
+TimerLabel.Text = "Time: 00:00"
+print("[Mugi Auto Farm] Fish Killer + Chest Hunter loaded")
