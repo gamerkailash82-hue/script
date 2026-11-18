@@ -1,5 +1,5 @@
 --[[
-    Auto Farm (Fish Killer + Chest Hunter + Market Value)
+    Auto Farm (Fish Killer + Chest Hunter + Market Value + Leaderboard Fish)
     Made by Mugi fucker
 ]]
 
@@ -13,6 +13,11 @@ local UserInputService = game:GetService("UserInputService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+
+-- Remove old copy if re-executed
+if PlayerGui:FindFirstChild("MugiAutoFarm") then
+    PlayerGui.MugiAutoFarm:Destroy()
+end
 
 -- ====================== DEFAULTS & SETTINGS ======================
 
@@ -43,6 +48,11 @@ local function saveSetting(key)
     end)
 end
 
+-- Leaderboard config
+local LB_SHOW_AMOUNT = 50          -- How many players to show (10, 25, 50, 100...)
+local LB_REFRESH_TIME = 20         -- Auto refresh every X seconds
+local LB_DEFAULT_TIMEFRAME = "Daily"
+
 -- ====================== STATE ======================
 
 local State = {
@@ -61,6 +71,8 @@ local State = {
 
 -- ====================== MAIN GUI ======================
 
+local MAIN_WIDTH = 400
+
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "MugiAutoFarm"
 ScreenGui.ResetOnSpawn = false
@@ -69,7 +81,7 @@ ScreenGui.Parent = PlayerGui
 
 local Main = Instance.new("Frame")
 Main.Name = "Main"
-Main.Size = UDim2.fromOffset(360, 540)
+Main.Size = UDim2.fromOffset(MAIN_WIDTH, 540)
 Main.Position = UDim2.new(0.03, 0, 0.2, 0)
 Main.BackgroundColor3 = Color3.fromRGB(18, 18, 24)
 Main.BorderSizePixel = 0
@@ -132,7 +144,7 @@ CloseBtn.Font = Enum.Font.GothamBold
 CloseBtn.Parent = TopBar
 Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 7)
 
--- ========== TABS (3 tabs) ==========
+-- ========== TABS (4 tabs) ==========
 local TabBar = Instance.new("Frame")
 TabBar.Size = UDim2.new(1, -24, 0, 36)
 TabBar.Position = UDim2.fromOffset(12, 50)
@@ -140,7 +152,7 @@ TabBar.BackgroundTransparency = 1
 TabBar.Parent = Main
 
 local FishTabBtn = Instance.new("TextButton")
-FishTabBtn.Size = UDim2.new(0.33, -4, 1, 0)
+FishTabBtn.Size = UDim2.new(0.2, -4, 1, 0)
 FishTabBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
 FishTabBtn.Text = "🐟 Fish"
 FishTabBtn.TextColor3 = Color3.new(1, 1, 1)
@@ -150,8 +162,8 @@ FishTabBtn.Parent = TabBar
 Instance.new("UICorner", FishTabBtn).CornerRadius = UDim.new(0, 8)
 
 local ChestTabBtn = Instance.new("TextButton")
-ChestTabBtn.Size = UDim2.new(0.33, -4, 1, 0)
-ChestTabBtn.Position = UDim2.new(0.33, 2, 0, 0)
+ChestTabBtn.Size = UDim2.new(0.2, -4, 1, 0)
+ChestTabBtn.Position = UDim2.new(0.2, 2, 0, 0)
 ChestTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
 ChestTabBtn.Text = "📦 Chest"
 ChestTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
@@ -161,8 +173,8 @@ ChestTabBtn.Parent = TabBar
 Instance.new("UICorner", ChestTabBtn).CornerRadius = UDim.new(0, 8)
 
 local MarketTabBtn = Instance.new("TextButton")
-MarketTabBtn.Size = UDim2.new(0.34, -4, 1, 0)
-MarketTabBtn.Position = UDim2.new(0.66, 2, 0, 0)
+MarketTabBtn.Size = UDim2.new(0.2, -4, 1, 0)
+MarketTabBtn.Position = UDim2.new(0.4, 2, 0, 0)
 MarketTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
 MarketTabBtn.Text = "💰 Market"
 MarketTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
@@ -170,6 +182,17 @@ MarketTabBtn.TextSize = 12
 MarketTabBtn.Font = Enum.Font.GothamBold
 MarketTabBtn.Parent = TabBar
 Instance.new("UICorner", MarketTabBtn).CornerRadius = UDim.new(0, 8)
+
+local LBTabBtn = Instance.new("TextButton")
+LBTabBtn.Size = UDim2.new(0.4, -4, 1, 0)
+LBTabBtn.Position = UDim2.new(0.6, 2, 0, 0)
+LBTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+LBTabBtn.Text = "🏆 Leaderboard Fish"
+LBTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+LBTabBtn.TextSize = 12
+LBTabBtn.Font = Enum.Font.GothamBold
+LBTabBtn.Parent = TabBar
+Instance.new("UICorner", LBTabBtn).CornerRadius = UDim.new(0, 8)
 
 -- ========== CONTENT CONTAINERS ==========
 local Content = Instance.new("Frame")
@@ -195,6 +218,12 @@ MarketContent.Size = UDim2.fromScale(1, 1)
 MarketContent.BackgroundTransparency = 1
 MarketContent.Visible = false
 MarketContent.Parent = Content
+
+local LBContent = Instance.new("Frame")
+LBContent.Size = UDim2.fromScale(1, 1)
+LBContent.BackgroundTransparency = 1
+LBContent.Visible = false
+LBContent.Parent = Content
 
 -- ====================== FISH KILLER UI ======================
 
@@ -480,7 +509,7 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     State.IsMinimized = not State.IsMinimized
 
     if State.IsMinimized then
-        Main.Size = UDim2.fromOffset(360, 42)
+        Main.Size = UDim2.fromOffset(MAIN_WIDTH, 42)
         MinimizeBtn.Text = "+"
         Title.Text = "🎣 Auto Farm (Minimized)"
         for _, child in ipairs(Main:GetChildren()) do
@@ -503,6 +532,7 @@ end)
 CloseBtn.MouseButton1Click:Connect(function()
     State.IsRunning = false
     State.ChestRunning = false
+    _G.ForceMasterAnglers = nil
     ScreenGui:Destroy()
 end)
 
@@ -512,14 +542,13 @@ local function switchTab(tab)
     FishContent.Visible = (tab == "Fish")
     ChestContent.Visible = (tab == "Chest")
     MarketContent.Visible = (tab == "Market")
+    LBContent.Visible = (tab == "Leaderboard")
 
     -- Reset colors
-    FishTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
-    FishTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
-    ChestTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
-    ChestTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
-    MarketTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
-    MarketTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+    for _, btn in ipairs({FishTabBtn, ChestTabBtn, MarketTabBtn, LBTabBtn}) do
+        btn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+        btn.TextColor3 = Color3.fromRGB(200, 200, 210)
+    end
 
     if tab == "Fish" then
         FishTabBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
@@ -527,15 +556,23 @@ local function switchTab(tab)
     elseif tab == "Chest" then
         ChestTabBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
         ChestTabBtn.TextColor3 = Color3.new(1, 1, 1)
-    else
+    elseif tab == "Market" then
         MarketTabBtn.BackgroundColor3 = Color3.fromRGB(255, 180, 50)
         MarketTabBtn.TextColor3 = Color3.new(1, 1, 1)
+    else
+        LBTabBtn.BackgroundColor3 = Color3.fromRGB(90, 140, 200)
+        LBTabBtn.TextColor3 = Color3.new(1, 1, 1)
+        -- refresh leaderboard when the tab is opened
+        if _G.ForceMasterAnglers then
+            task.spawn(_G.ForceMasterAnglers)
+        end
     end
 end
 
 FishTabBtn.MouseButton1Click:Connect(function() switchTab("Fish") end)
 ChestTabBtn.MouseButton1Click:Connect(function() switchTab("Chest") end)
 MarketTabBtn.MouseButton1Click:Connect(function() switchTab("Market") end)
+LBTabBtn.MouseButton1Click:Connect(function() switchTab("Leaderboard") end)
 
 -- ====================== FISH LOGIC ======================
 
@@ -866,7 +903,7 @@ task.spawn(function()
     MarketStatusLabel.Text = "Connected!"
     task.wait(0.5)
 
-    while true do
+    while ScreenGui.Parent do
         local success, currentMultiplier, timeRemaining = pcall(function()
             return FishMarket.Now()
         end)
@@ -899,6 +936,254 @@ task.spawn(function()
         task.wait(0.5)
     end
 end)
+
+-- ====================== LEADERBOARD FISH (Master Anglers) ======================
+-- Wrapped in do...end so its locals don't count toward Lua's 200-local limit.
+
+do
+    local Timeframes = {"Daily", "Monthly", "AllTime"}
+    local currentTF = LB_DEFAULT_TIMEFRAME
+    local tfButtons = {}
+
+    -- Timeframe buttons
+    local btnFrame = Instance.new("Frame")
+    btnFrame.Size = UDim2.new(1, 0, 0, 30)
+    btnFrame.BackgroundTransparency = 1
+    btnFrame.Parent = LBContent
+
+    local btnLayout = Instance.new("UIListLayout")
+    btnLayout.FillDirection = Enum.FillDirection.Horizontal
+    btnLayout.Padding = UDim.new(0, 6)
+    btnLayout.Parent = btnFrame
+
+    local function updateTFButtons()
+        for name, btn in pairs(tfButtons) do
+            if name == currentTF then
+                btn.BackgroundColor3 = Color3.fromRGB(60, 160, 100)
+                btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+            else
+                btn.BackgroundColor3 = Color3.fromRGB(40, 35, 55)
+                btn.TextColor3 = Color3.fromRGB(180, 175, 200)
+            end
+        end
+    end
+
+    for _, tf in ipairs(Timeframes) do
+        local btn = Instance.new("TextButton")
+        btn.Size = UDim2.new(1 / 3, -4, 1, 0)
+        btn.BackgroundColor3 = Color3.fromRGB(40, 35, 55)
+        btn.Text = tf
+        btn.Font = Enum.Font.GothamBold
+        btn.TextSize = 13
+        btn.TextColor3 = Color3.fromRGB(180, 175, 200)
+        btn.AutoButtonColor = false
+        btn.Parent = btnFrame
+        Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 8)
+
+        btn.MouseButton1Click:Connect(function()
+            currentTF = tf
+            updateTFButtons()
+            if _G.ForceMasterAnglers then
+                task.spawn(_G.ForceMasterAnglers)
+            end
+        end)
+        tfButtons[tf] = btn
+    end
+    updateTFButtons()
+
+    -- Your Rank
+    local RankLabel = Instance.new("TextLabel")
+    RankLabel.Size = UDim2.new(1, 0, 0, 22)
+    RankLabel.Position = UDim2.fromOffset(0, 36)
+    RankLabel.BackgroundTransparency = 1
+    RankLabel.Font = Enum.Font.GothamBold
+    RankLabel.Text = "Your Rank: Checking..."
+    RankLabel.TextColor3 = Color3.fromRGB(160, 226, 150)
+    RankLabel.TextSize = 13
+    RankLabel.TextXAlignment = Enum.TextXAlignment.Left
+    RankLabel.Parent = LBContent
+
+    -- Status
+    local LBStatusLabel = Instance.new("TextLabel")
+    LBStatusLabel.Size = UDim2.new(1, 0, 0, 18)
+    LBStatusLabel.Position = UDim2.fromOffset(0, 58)
+    LBStatusLabel.BackgroundTransparency = 1
+    LBStatusLabel.Font = Enum.Font.Gotham
+    LBStatusLabel.Text = "Connecting..."
+    LBStatusLabel.TextColor3 = Color3.fromRGB(140, 135, 165)
+    LBStatusLabel.TextSize = 12
+    LBStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+    LBStatusLabel.Parent = LBContent
+
+    -- List
+    local LBScroll = Instance.new("ScrollingFrame")
+    LBScroll.Size = UDim2.new(1, 0, 1, -84)
+    LBScroll.Position = UDim2.fromOffset(0, 82)
+    LBScroll.BackgroundColor3 = Color3.fromRGB(25, 20, 40)
+    LBScroll.BorderSizePixel = 0
+    LBScroll.ScrollBarThickness = 5
+    LBScroll.ScrollBarImageColor3 = Color3.fromRGB(90, 140, 150)
+    LBScroll.CanvasSize = UDim2.fromOffset(0, 0)
+    LBScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    LBScroll.Parent = LBContent
+    Instance.new("UICorner", LBScroll).CornerRadius = UDim.new(0, 10)
+
+    local lbListLayout = Instance.new("UIListLayout")
+    lbListLayout.Padding = UDim.new(0, 4)
+    lbListLayout.SortOrder = Enum.SortOrder.LayoutOrder
+    lbListLayout.Parent = LBScroll
+
+    local lbPadding = Instance.new("UIPadding")
+    lbPadding.PaddingTop = UDim.new(0, 6)
+    lbPadding.PaddingBottom = UDim.new(0, 6)
+    lbPadding.PaddingLeft = UDim.new(0, 6)
+    lbPadding.PaddingRight = UDim.new(0, 6)
+    lbPadding.Parent = LBScroll
+
+    local function createRow(rank, name, value, isMe)
+        local row = Instance.new("Frame")
+        row.Size = UDim2.new(1, -12, 0, 32)
+        row.BackgroundColor3 = isMe and Color3.fromRGB(40, 70, 50) or Color3.fromRGB(32, 28, 48)
+        row.BorderSizePixel = 0
+        Instance.new("UICorner", row).CornerRadius = UDim.new(0, 8)
+
+        local rankLabel = Instance.new("TextLabel")
+        rankLabel.Size = UDim2.fromOffset(40, 32)
+        rankLabel.Position = UDim2.fromOffset(8, 0)
+        rankLabel.BackgroundTransparency = 1
+        rankLabel.Font = Enum.Font.GothamBold
+        rankLabel.Text = "#" .. rank
+        rankLabel.TextColor3 = rank == 1 and Color3.fromRGB(255, 215, 80)
+            or rank == 2 and Color3.fromRGB(200, 200, 220)
+            or rank == 3 and Color3.fromRGB(220, 160, 100)
+            or Color3.fromRGB(180, 175, 200)
+        rankLabel.TextSize = 13
+        rankLabel.TextXAlignment = Enum.TextXAlignment.Left
+        rankLabel.Parent = row
+
+        local nameLabel = Instance.new("TextLabel")
+        nameLabel.Size = UDim2.new(1, -140, 1, 0)
+        nameLabel.Position = UDim2.fromOffset(50, 0)
+        nameLabel.BackgroundTransparency = 1
+        nameLabel.Font = Enum.Font.GothamMedium
+        nameLabel.Text = name
+        nameLabel.TextColor3 = isMe and Color3.fromRGB(160, 255, 180) or Color3.fromRGB(230, 225, 240)
+        nameLabel.TextSize = 13
+        nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+        nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+        nameLabel.Parent = row
+
+        local valueLabel = Instance.new("TextLabel")
+        valueLabel.Size = UDim2.fromOffset(80, 32)
+        valueLabel.Position = UDim2.new(1, -88, 0, 0)
+        valueLabel.BackgroundTransparency = 1
+        valueLabel.Font = Enum.Font.GothamBold
+        valueLabel.Text = tostring(value)
+        valueLabel.TextColor3 = Color3.fromRGB(255, 205, 70)
+        valueLabel.TextSize = 13
+        valueLabel.TextXAlignment = Enum.TextXAlignment.Right
+        valueLabel.Parent = row
+
+        return row
+    end
+
+    -- Logic
+    task.spawn(function()
+        local RemoteBridge
+        local success = false
+
+        for i = 1, 15 do
+            if not ScreenGui.Parent then return end
+
+            local ok, result = pcall(function()
+                local ps = LocalPlayer:FindFirstChild("PlayerScripts")
+                if not ps then return nil end
+                local lb = ps:FindFirstChild("LeaderBoardClient") or ps:WaitForChild("LeaderBoardClient", 1)
+                if not lb then return nil end
+                local bridge = lb:FindFirstChild("RemoteBridge")
+                if bridge then
+                    return require(bridge)
+                end
+            end)
+
+            if ok and result and type(result.RequestLeaderboard) == "function" then
+                RemoteBridge = result
+                success = true
+                break
+            end
+            LBStatusLabel.Text = "Waiting for bridge... (" .. i .. ")"
+            task.wait(1)
+        end
+
+        if not success then
+            LBStatusLabel.Text = "Failed to get RemoteBridge"
+            return
+        end
+
+        LBStatusLabel.Text = "Connected!"
+
+        local function clearList()
+            for _, child in ipairs(LBScroll:GetChildren()) do
+                if child:IsA("Frame") then
+                    child:Destroy()
+                end
+            end
+        end
+
+        local function request()
+            if not ScreenGui.Parent then return end
+            LBStatusLabel.Text = "Requesting " .. currentTF .. "..."
+
+            pcall(function()
+                RemoteBridge.RequestLeaderboard("TotalFishCaught", currentTF, function(entries, extras)
+                    if not ScreenGui.Parent then return end
+                    clearList()
+
+                    if type(entries) ~= "table" or #entries == 0 then
+                        RankLabel.Text = "Your Rank: Not ranked"
+                        LBStatusLabel.Text = "No data (" .. currentTF .. ")"
+                        return
+                    end
+
+                    local myRankText = "Not ranked"
+                    local maxShow = math.min(LB_SHOW_AMOUNT, #entries)
+
+                    for i = 1, maxShow do
+                        local e = entries[i]
+                        local id = e.UserId or e.id
+                        local name = e.Name or e.name or "Unknown"
+                        local value = e.Value or e.value or 0
+                        local rank = e.rank or i
+                        local isMe = id == LocalPlayer.UserId
+
+                        if isMe then
+                            myRankText = string.format("#%s  (%s fish)", tostring(rank), tostring(value))
+                        end
+
+                        local row = createRow(rank, name, value, isMe)
+                        row.LayoutOrder = i
+                        row.Parent = LBScroll
+                    end
+
+                    RankLabel.Text = "Your Rank:  " .. myRankText
+                    LBStatusLabel.Text = currentTF .. " • Top " .. maxShow .. " • " .. os.date("%H:%M:%S")
+                end)
+            end)
+        end
+
+        _G.ForceMasterAnglers = request
+
+        request()
+
+        -- Auto refresh (only while the Leaderboard tab is open, to avoid needless requests)
+        while ScreenGui.Parent do
+            task.wait(LB_REFRESH_TIME)
+            if ScreenGui.Parent and LBContent.Visible and not State.IsMinimized then
+                request()
+            end
+        end
+    end)
+end
 
 -- ====================== BUTTON CONNECTIONS ======================
 
@@ -949,4 +1234,4 @@ end)
 -- Init
 updateUI()
 TimerLabel.Text = "Time: 00:00"
-print("[Mugi Auto Farm] Fish + Chest + Market Value loaded")
+print("[Mugi Auto Farm] Fish + Chest + Market Value + Leaderboard Fish loaded")
