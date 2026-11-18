@@ -1,5 +1,5 @@
 --[[
-    Auto Farm (Fish Killer + Chest Hunter)
+    Auto Farm (Fish Killer + Chest Hunter + Market Value)
     Made by Mugi fucker
 ]]
 
@@ -7,6 +7,7 @@ repeat task.wait() until game:IsLoaded()
 
 local Players = game:GetService("Players")
 local Workspace = game:GetService("Workspace")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local UserInputService = game:GetService("UserInputService")
 
@@ -47,14 +48,14 @@ end
 local State = {
     DetectedKey = "None",
     Status = "Idle",
-    IsRunning = false,          -- Fish
+    IsRunning = false,
     FishCaught = 0,
     IsMinimized = false,
     IsCharging = false,
     StartTime = 0,
     ElapsedTime = 0,
 
-    ChestRunning = false,       -- Chest
+    ChestRunning = false,
     ChestStatus = "Idle",
 }
 
@@ -77,7 +78,6 @@ Main.Parent = ScreenGui
 
 Instance.new("UICorner", Main).CornerRadius = UDim.new(0, 14)
 
--- Subtle border
 local Stroke = Instance.new("UIStroke")
 Stroke.Color = Color3.fromRGB(45, 45, 60)
 Stroke.Thickness = 1
@@ -92,7 +92,6 @@ TopBar.Parent = Main
 
 Instance.new("UICorner", TopBar).CornerRadius = UDim.new(0, 14)
 
--- Fix bottom corners of top bar
 local TopBarFix = Instance.new("Frame")
 TopBarFix.Size = UDim2.new(1, 0, 0, 14)
 TopBarFix.Position = UDim2.new(0, 0, 1, -14)
@@ -111,7 +110,6 @@ Title.Font = Enum.Font.GothamBold
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = TopBar
 
--- Minimize
 local MinimizeBtn = Instance.new("TextButton")
 MinimizeBtn.Size = UDim2.fromOffset(28, 28)
 MinimizeBtn.Position = UDim2.new(1, -70, 0.5, -14)
@@ -123,7 +121,6 @@ MinimizeBtn.Font = Enum.Font.GothamBold
 MinimizeBtn.Parent = TopBar
 Instance.new("UICorner", MinimizeBtn).CornerRadius = UDim.new(0, 7)
 
--- Close
 local CloseBtn = Instance.new("TextButton")
 CloseBtn.Size = UDim2.fromOffset(28, 28)
 CloseBtn.Position = UDim2.new(1, -36, 0.5, -14)
@@ -135,7 +132,7 @@ CloseBtn.Font = Enum.Font.GothamBold
 CloseBtn.Parent = TopBar
 Instance.new("UICorner", CloseBtn).CornerRadius = UDim.new(0, 7)
 
--- ========== TABS ==========
+-- ========== TABS (3 tabs) ==========
 local TabBar = Instance.new("Frame")
 TabBar.Size = UDim2.new(1, -24, 0, 36)
 TabBar.Position = UDim2.fromOffset(12, 50)
@@ -143,25 +140,36 @@ TabBar.BackgroundTransparency = 1
 TabBar.Parent = Main
 
 local FishTabBtn = Instance.new("TextButton")
-FishTabBtn.Size = UDim2.new(0.5, -4, 1, 0)
+FishTabBtn.Size = UDim2.new(0.33, -4, 1, 0)
 FishTabBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
-FishTabBtn.Text = "🐟 Fish Killer"
+FishTabBtn.Text = "🐟 Fish"
 FishTabBtn.TextColor3 = Color3.new(1, 1, 1)
-FishTabBtn.TextSize = 13
+FishTabBtn.TextSize = 12
 FishTabBtn.Font = Enum.Font.GothamBold
 FishTabBtn.Parent = TabBar
 Instance.new("UICorner", FishTabBtn).CornerRadius = UDim.new(0, 8)
 
 local ChestTabBtn = Instance.new("TextButton")
-ChestTabBtn.Size = UDim2.new(0.5, -4, 1, 0)
-ChestTabBtn.Position = UDim2.new(0.5, 4, 0, 0)
+ChestTabBtn.Size = UDim2.new(0.33, -4, 1, 0)
+ChestTabBtn.Position = UDim2.new(0.33, 2, 0, 0)
 ChestTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
-ChestTabBtn.Text = "📦 Chest Hunter"
+ChestTabBtn.Text = "📦 Chest"
 ChestTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
-ChestTabBtn.TextSize = 13
+ChestTabBtn.TextSize = 12
 ChestTabBtn.Font = Enum.Font.GothamBold
 ChestTabBtn.Parent = TabBar
 Instance.new("UICorner", ChestTabBtn).CornerRadius = UDim.new(0, 8)
+
+local MarketTabBtn = Instance.new("TextButton")
+MarketTabBtn.Size = UDim2.new(0.34, -4, 1, 0)
+MarketTabBtn.Position = UDim2.new(0.66, 2, 0, 0)
+MarketTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+MarketTabBtn.Text = "💰 Market"
+MarketTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+MarketTabBtn.TextSize = 12
+MarketTabBtn.Font = Enum.Font.GothamBold
+MarketTabBtn.Parent = TabBar
+Instance.new("UICorner", MarketTabBtn).CornerRadius = UDim.new(0, 8)
 
 -- ========== CONTENT CONTAINERS ==========
 local Content = Instance.new("Frame")
@@ -181,6 +189,12 @@ ChestContent.Size = UDim2.fromScale(1, 1)
 ChestContent.BackgroundTransparency = 1
 ChestContent.Visible = false
 ChestContent.Parent = Content
+
+local MarketContent = Instance.new("Frame")
+MarketContent.Size = UDim2.fromScale(1, 1)
+MarketContent.BackgroundTransparency = 1
+MarketContent.Visible = false
+MarketContent.Parent = Content
 
 -- ====================== FISH KILLER UI ======================
 
@@ -216,7 +230,6 @@ TimerLabel.Font = Enum.Font.GothamBold
 TimerLabel.TextXAlignment = Enum.TextXAlignment.Left
 TimerLabel.Parent = FishContent
 
--- Settings
 local SettingsFrame = Instance.new("Frame")
 SettingsFrame.Size = UDim2.new(1, 0, 0, 210)
 SettingsFrame.Position = UDim2.fromOffset(0, 78)
@@ -274,16 +287,18 @@ local function makeSettingRow(name, labelText, min, max, step, order, isWholeNum
     Minus.Parent = Row
     Instance.new("UICorner", Minus).CornerRadius = UDim.new(0, 6)
 
-    local Val = Instance.new("TextLabel")
+    local Val = Instance.new("TextBox")
     Val.Size = UDim2.fromOffset(48, 24)
     Val.Position = UDim2.new(1, -74, 0.5, -12)
-    Val.BackgroundTransparency = 1
+    Val.BackgroundColor3 = Color3.fromRGB(28, 28, 40)
     Val.Text = isWholeNumber and tostring(math.floor(SETTINGS[name])) or string.format("%.3f", SETTINGS[name])
     Val.TextColor3 = Color3.fromRGB(100, 220, 140)
     Val.TextSize = 12
     Val.Font = Enum.Font.GothamBold
-    Val.TextXAlignment = Enum.TextXAlignment.Right
+    Val.TextXAlignment = Enum.TextXAlignment.Center
+    Val.ClearTextOnFocus = false
     Val.Parent = Row
+    Instance.new("UICorner", Val).CornerRadius = UDim.new(0, 6)
 
     local Plus = Instance.new("TextButton")
     Plus.Size = UDim2.fromOffset(24, 24)
@@ -300,6 +315,21 @@ local function makeSettingRow(name, labelText, min, max, step, order, isWholeNum
         Val.Text = isWholeNumber and tostring(math.floor(SETTINGS[name])) or string.format("%.3f", SETTINGS[name])
         saveSetting(name)
     end
+
+    local function applyValue(text)
+        local num = tonumber(text)
+        if not num then
+            refresh()
+            return
+        end
+        if isWholeNumber then num = math.floor(num) end
+        SETTINGS[name] = math.clamp(num, min, max)
+        refresh()
+    end
+
+    Val.FocusLost:Connect(function()
+        applyValue(Val.Text)
+    end)
 
     Minus.MouseButton1Click:Connect(function()
         SETTINGS[name] = math.max(min, math.floor((SETTINGS[name] - step) * 1000 + 0.5) / 1000)
@@ -322,7 +352,6 @@ makeSettingRow("KeyHoldTime", "Key Press Speed", 0, 0.5, 0.001, 5)
 makeSettingRow("ClickDelay", "Click Delay", 0, 0.5, 0.001, 6)
 makeSettingRow("ScanInterval", "Scan Interval", 0, 0.5, 0.005, 7)
 
--- Fish Buttons
 local FishToggle = Instance.new("TextButton")
 FishToggle.Size = UDim2.new(1, 0, 0, 44)
 FishToggle.Position = UDim2.fromOffset(0, 300)
@@ -361,7 +390,7 @@ local ChestInfo = Instance.new("TextLabel")
 ChestInfo.Size = UDim2.new(1, 0, 0, 60)
 ChestInfo.Position = UDim2.fromOffset(0, 48)
 ChestInfo.BackgroundTransparency = 1
-ChestInfo.Text = "Automatically teleports to every chest ( aafno risk ma use gar mugi)."
+ChestInfo.Text = "Automatically teleports to every chest (aafno risk ma use gar mugi)."
 ChestInfo.TextColor3 = Color3.fromRGB(150, 150, 165)
 ChestInfo.TextSize = 12
 ChestInfo.Font = Enum.Font.Gotham
@@ -371,7 +400,7 @@ ChestInfo.Parent = ChestContent
 
 local ChestToggle = Instance.new("TextButton")
 ChestToggle.Size = UDim2.new(1, 0, 0, 48)
-ChestToggle.Position = UDim2.fromOffset(0, 80)
+ChestToggle.Position = UDim2.fromOffset(0, 120)
 ChestToggle.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
 ChestToggle.Text = "START CHEST HUNTER"
 ChestToggle.TextColor3 = Color3.new(1, 1, 1)
@@ -379,6 +408,41 @@ ChestToggle.TextSize = 15
 ChestToggle.Font = Enum.Font.GothamBold
 ChestToggle.Parent = ChestContent
 Instance.new("UICorner", ChestToggle).CornerRadius = UDim.new(0, 10)
+
+-- ====================== MARKET VALUE UI ======================
+
+local MarketTitle = Instance.new("TextLabel")
+MarketTitle.Size = UDim2.new(1, 0, 0, 28)
+MarketTitle.BackgroundTransparency = 1
+MarketTitle.Text = "🐟 Exact Market Value"
+MarketTitle.TextColor3 = Color3.fromRGB(255, 240, 214)
+MarketTitle.TextSize = 16
+MarketTitle.Font = Enum.Font.GothamBold
+MarketTitle.TextXAlignment = Enum.TextXAlignment.Left
+MarketTitle.Parent = MarketContent
+
+local MarketValueLabel = Instance.new("TextLabel")
+MarketValueLabel.Size = UDim2.new(1, 0, 0, 55)
+MarketValueLabel.Position = UDim2.fromOffset(0, 35)
+MarketValueLabel.BackgroundColor3 = Color3.fromRGB(32, 28, 45)
+MarketValueLabel.Text = "Waiting..."
+MarketValueLabel.TextColor3 = Color3.fromRGB(255, 205, 70)
+MarketValueLabel.TextSize = 36
+MarketValueLabel.Font = Enum.Font.GothamBold
+MarketValueLabel.Parent = MarketContent
+Instance.new("UICorner", MarketValueLabel).CornerRadius = UDim.new(0, 10)
+
+local MarketStatusLabel = Instance.new("TextLabel")
+MarketStatusLabel.Size = UDim2.new(1, 0, 0, 40)
+MarketStatusLabel.Position = UDim2.fromOffset(0, 100)
+MarketStatusLabel.BackgroundTransparency = 1
+MarketStatusLabel.Text = "Connecting to module..."
+MarketStatusLabel.TextColor3 = Color3.fromRGB(176, 166, 204)
+MarketStatusLabel.TextSize = 13
+MarketStatusLabel.Font = Enum.Font.Gotham
+MarketStatusLabel.TextWrapped = true
+MarketStatusLabel.TextXAlignment = Enum.TextXAlignment.Left
+MarketStatusLabel.Parent = MarketContent
 
 -- ====================== DRAGGING ======================
 
@@ -418,8 +482,7 @@ MinimizeBtn.MouseButton1Click:Connect(function()
     if State.IsMinimized then
         Main.Size = UDim2.fromOffset(360, 42)
         MinimizeBtn.Text = "+"
-        Title.Text = "🎣 Auto Farm (Minimized)  •  Mugi fucker"
-
+        Title.Text = "🎣 Auto Farm (Minimized)"
         for _, child in ipairs(Main:GetChildren()) do
             if child ~= TopBar and not child:IsA("UICorner") and not child:IsA("UIStroke") then
                 child.Visible = false
@@ -429,7 +492,6 @@ MinimizeBtn.MouseButton1Click:Connect(function()
         Main.Size = originalSize
         MinimizeBtn.Text = "−"
         Title.Text = "🎣 Auto Farm  •  Made by Mugi fucker"
-
         for _, child in ipairs(Main:GetChildren()) do
             if child ~= TopBar and not child:IsA("UICorner") and not child:IsA("UIStroke") then
                 child.Visible = true
@@ -447,27 +509,35 @@ end)
 -- ====================== TAB SWITCHING ======================
 
 local function switchTab(tab)
+    FishContent.Visible = (tab == "Fish")
+    ChestContent.Visible = (tab == "Chest")
+    MarketContent.Visible = (tab == "Market")
+
+    -- Reset colors
+    FishTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+    FishTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+    ChestTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+    ChestTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+    MarketTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
+    MarketTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+
     if tab == "Fish" then
-        FishContent.Visible = true
-        ChestContent.Visible = false
         FishTabBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
         FishTabBtn.TextColor3 = Color3.new(1, 1, 1)
-        ChestTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
-        ChestTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
-    else
-        FishContent.Visible = false
-        ChestContent.Visible = true
+    elseif tab == "Chest" then
         ChestTabBtn.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
         ChestTabBtn.TextColor3 = Color3.new(1, 1, 1)
-        FishTabBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 65)
-        FishTabBtn.TextColor3 = Color3.fromRGB(200, 200, 210)
+    else
+        MarketTabBtn.BackgroundColor3 = Color3.fromRGB(255, 180, 50)
+        MarketTabBtn.TextColor3 = Color3.new(1, 1, 1)
     end
 end
 
 FishTabBtn.MouseButton1Click:Connect(function() switchTab("Fish") end)
 ChestTabBtn.MouseButton1Click:Connect(function() switchTab("Chest") end)
+MarketTabBtn.MouseButton1Click:Connect(function() switchTab("Market") end)
 
--- ====================== FISH LOGIC (kept accurate) ======================
+-- ====================== FISH LOGIC ======================
 
 local function updateUI()
     KeyLabel.Text = "Key: " .. State.DetectedKey
@@ -774,6 +844,62 @@ local function chestMainLoop()
     State.ChestRunning = false
 end
 
+-- ====================== MARKET VALUE LOOP ======================
+
+task.spawn(function()
+    local FishMarket = nil
+
+    while not FishMarket do
+        local success, result = pcall(function()
+            local modules = ReplicatedStorage:FindFirstChild("Modules")
+            return modules and require(modules:WaitForChild("FishMarket", 2))
+        end)
+
+        if success and result then
+            FishMarket = result
+        else
+            MarketStatusLabel.Text = "Waiting for FishMarket module..."
+            task.wait(2)
+        end
+    end
+
+    MarketStatusLabel.Text = "Connected!"
+    task.wait(0.5)
+
+    while true do
+        local success, currentMultiplier, timeRemaining = pcall(function()
+            return FishMarket.Now()
+        end)
+
+        if success and currentMultiplier then
+            MarketValueLabel.Text = ("%.4fx"):format(currentMultiplier)
+
+            if FishMarket.BOOM and currentMultiplier >= FishMarket.BOOM then
+                MarketValueLabel.TextColor3 = Color3.fromRGB(255, 205, 70)
+                MarketStatusLabel.Text = "🔥 MARKET BOOM! SELL NOW!"
+            elseif currentMultiplier >= 1.5 then
+                MarketValueLabel.TextColor3 = Color3.fromRGB(110, 228, 120)
+                MarketStatusLabel.Text = "Great price to sell!"
+            elseif currentMultiplier >= 1.0 then
+                MarketValueLabel.TextColor3 = Color3.fromRGB(160, 226, 150)
+                MarketStatusLabel.Text = "Above normal price"
+            else
+                MarketValueLabel.TextColor3 = Color3.fromRGB(240, 104, 104)
+                MarketStatusLabel.Text = "Low price: Hold fish"
+            end
+
+            if timeRemaining then
+                MarketStatusLabel.Text = MarketStatusLabel.Text .. string.format(" (%d:%02d)", timeRemaining // 60, math.floor(timeRemaining % 60))
+            end
+        else
+            MarketValueLabel.Text = "Error"
+            MarketStatusLabel.Text = "Failed to fetch FishMarket.Now()"
+        end
+
+        task.wait(0.5)
+    end
+end)
+
 -- ====================== BUTTON CONNECTIONS ======================
 
 ResetBtn.MouseButton1Click:Connect(function()
@@ -823,4 +949,4 @@ end)
 -- Init
 updateUI()
 TimerLabel.Text = "Time: 00:00"
-print("[Mugi Auto Farm] Fish Killer + Chest Hunter loaded")
+print("[Mugi Auto Farm] Fish + Chest + Market Value loaded")
