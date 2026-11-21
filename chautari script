@@ -10,6 +10,7 @@ local Workspace = game:GetService("Workspace")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local VirtualInputManager = game:GetService("VirtualInputManager")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 
 local LocalPlayer = Players.LocalPlayer
 local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
@@ -24,8 +25,6 @@ end
 local DEFAULTS = {
     CastHoldTime = 0.9,
     CastCooldown = 0.0,
-    TapCooldown = 0.001,
-    KeyHoldTime = 0.001,
     ClickDelay = 0.001,
     ScanInterval = 0.01,
     FishLimit = 50,
@@ -376,10 +375,8 @@ end
 makeSettingRow("FishLimit", "Fish Limit (0 = Inf)", 0, 9999, 1, 1, true)
 makeSettingRow("CastHoldTime", "Cast Hold Time", 0.1, 5, 0.05, 2)
 makeSettingRow("CastCooldown", "Cast Cooldown", 0, 5, 0.05, 3)
-makeSettingRow("TapCooldown", "Minigame Tap Speed", 0, 0.5, 0.001, 4)
-makeSettingRow("KeyHoldTime", "Key Press Speed", 0, 0.5, 0.001, 5)
-makeSettingRow("ClickDelay", "Click Delay", 0, 0.5, 0.001, 6)
-makeSettingRow("ScanInterval", "Scan Interval", 0, 0.5, 0.005, 7)
+makeSettingRow("ClickDelay", "Click Delay", 0, 0.5, 0.001, 4)
+makeSettingRow("ScanInterval", "Scan Interval", 0, 0.5, 0.005, 5)
 
 local FishToggle = Instance.new("TextButton")
 FishToggle.Size = UDim2.new(1, 0, 0, 44)
@@ -593,14 +590,6 @@ local function updateTimer()
     TimerLabel.Text = string.format("Time: %02d:%02d", mins, secs)
 end
 
-local keyMap = { W = Enum.KeyCode.W, A = Enum.KeyCode.A, S = Enum.KeyCode.S, D = Enum.KeyCode.D }
-
-local function pressKey(keyCode)
-    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
-    task.wait(SETTINGS.KeyHoldTime)
-    VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
-end
-
 local function mouseDown(x, y)
     VirtualInputManager:SendMouseButtonEvent(x, y, 0, true, game, 1)
 end
@@ -687,12 +676,137 @@ local function findCastButton()
     return nil
 end
 
+-- ====================== HOOK IT! BUTTON (click) ======================
+
 local tapCache = nil
 local function getTapMobile(gui)
+    if not gui then return nil end
     if tapCache and tapCache:IsDescendantOf(gui) then return tapCache end
     tapCache = gui:FindFirstChild("TapMobile", true)
     return tapCache
 end
+
+-- Finds the "HOOK IT!" button anywhere in PlayerGui (backup in case it isn't TapMobile)
+local hookObj, lastHookScan = nil, 0
+local function findHookButton()
+    if hookObj and hookObj:IsDescendantOf(PlayerGui) then
+        if isShown(hookObj) then return hookObj end
+        hookObj = nil
+    end
+    if os.clock() - lastHookScan < 0.15 then return nil end
+    lastHookScan = os.clock()
+
+    for _, v in ipairs(PlayerGui:GetDescendants()) do
+        if (v:IsA("TextLabel") or v:IsA("TextButton"))
+            and not v:IsDescendantOf(ScreenGui)
+            and string.find(string.upper(v.Text), "HOOK") then
+
+            if isShown(v) then
+                -- 1) nearest GuiButton parent
+                local obj = v
+                while obj and obj ~= PlayerGui and not obj:IsA("GuiButton") do
+                    obj = obj.Parent
+                end
+
+                if obj and obj ~= PlayerGui then
+                    hookObj = obj
+                else
+                    -- 2) no button: climb up to the first big ancestor (the round circle)
+                    local cur = v.Parent
+                    local found = nil
+                    for _ = 1, 3 do
+                        if cur and cur ~= PlayerGui and cur:IsA("GuiObject") and cur.AbsoluteSize.X >= 40 then
+                            found = cur
+                            break
+                        end
+                        cur = cur and cur.Parent
+                    end
+                    hookObj = found or v
+                end
+                return hookObj
+            end
+        end
+    end
+    return nil
+end
+
+-- ====================== NEW REEL MINIGAME (hold = push right, release = drift left) ======================
+-- Runs every frame on RenderStepped, holds Space when the fish is to the right of the green zone
+-- and releases when it's to the left.
+
+local Reel = {
+    holding = false,
+    cache = nil,
+    lastFish = nil,
+    lastZone = nil,
+    conn = nil,
+}
+
+local function setHold(state)
+    if state == Reel.holding then return end
+    Reel.holding = state
+    VirtualInputManager:SendKeyEvent(state, Enum.KeyCode.Space, false, game)
+end
+
+local function getReel(gui)
+    gui = gui or getFishingGui()
+    if not gui then
+        Reel.cache = nil
+        return nil
+    end
+    if not (Reel.cache and Reel.cache:IsDescendantOf(gui)) then
+        Reel.cache = gui:FindFirstChild("Reel", true)
+    end
+    local r = Reel.cache
+    if r and r:FindFirstChild("Zone") and r:FindFirstChild("Fish") and isShown(r) then
+        return r
+    end
+    return nil
+end
+
+local function reelStep()
+    if not ScreenGui.Parent then
+        if Reel.conn then Reel.conn:Disconnect() Reel.conn = nil end
+        setHold(false)
+        return
+    end
+
+    if not State.IsRunning then
+        setHold(false)
+        Reel.lastFish, Reel.lastZone = nil, nil
+        return
+    end
+
+    local reel = getReel()
+    if not reel then
+        setHold(false)
+        Reel.lastFish, Reel.lastZone = nil, nil
+        return
+    end
+
+    local zone, fish = reel.Zone, reel.Fish
+    local zoneCenter = zone.AbsolutePosition.X + zone.AbsoluteSize.X / 2
+    local fishCenter = fish.AbsolutePosition.X + fish.AbsoluteSize.X / 2
+
+    local fishVel = Reel.lastFish and (fishCenter - Reel.lastFish) or 0
+    local zoneVel = Reel.lastZone and (zoneCenter - Reel.lastZone) or 0
+    Reel.lastFish, Reel.lastZone = fishCenter, zoneCenter
+
+    -- lead the fish, and brake the zone a little so it doesn't overshoot
+    local target = fishCenter + fishVel * 3
+    local predictedZone = zoneCenter + zoneVel * 2
+
+    local dead = zone.AbsoluteSize.X * 0.08
+    if target > predictedZone + dead then
+        setHold(true)
+    elseif target < predictedZone - dead then
+        setHold(false)
+    end
+end
+
+Reel.conn = RunService.RenderStepped:Connect(reelStep)
+
+-- ====================== FISH COUNT / MAIN ======================
 
 local function getFishingFrame()
     local fishingGui = PlayerGui:FindFirstChild("FishingGui")
@@ -730,6 +844,7 @@ end
 local function detectAndAct()
     if checkFishCount() then return end
 
+    -- 1) Cast
     local castBtn = findCastButton()
     if castBtn then
         State.DetectedKey = "CAST"
@@ -740,32 +855,39 @@ local function detectAndAct()
         return
     end
 
-    local fishingGui = getFishingGui()
-    if not fishingGui then
-        State.DetectedKey = "None"
-        State.Status = "Waiting for bite..."
+    -- 2) New reel minigame (RenderStepped loop does the hold/release)
+    local reel = getReel()
+    if reel then
+        State.DetectedKey = Reel.holding and "HOLD" or "RELEASE"
+        State.Status = "Reeling (hold/release)"
         updateUI()
         return
     end
 
+    -- 3) HOOK IT! button (click it)
+    local fishingGui = getFishingGui()
     local tapMobile = getTapMobile(fishingGui)
     if tapMobile and isShown(tapMobile) then
-        local keyAttr = tapMobile:GetAttribute("Key")
-        if typeof(keyAttr) == "string" then keyAttr = string.upper(keyAttr) end
+        State.DetectedKey = "HOOK"
+        State.Status = "Hooking!"
+        updateUI()
+        clickObject(tapMobile)
+        return
+    end
 
-        if keyAttr and keyMap[keyAttr] then
-            State.DetectedKey = keyAttr
-            State.Status = "Spamming " .. keyAttr
-            updateUI()
-            pressKey(keyMap[keyAttr])
-        else
-            State.DetectedKey = "TAP"
-            State.Status = "Spamming Tap"
-            updateUI()
-            clickObject(tapMobile)
-        end
+    local hookBtn = findHookButton()
+    if hookBtn then
+        State.DetectedKey = "HOOK"
+        State.Status = "Hooking!"
+        updateUI()
+        clickObject(hookBtn)
+        return
+    end
 
-        if SETTINGS.TapCooldown > 0 then task.wait(SETTINGS.TapCooldown) end
+    if not fishingGui then
+        State.DetectedKey = "None"
+        State.Status = "Waiting for bite..."
+        updateUI()
         return
     end
 
@@ -786,6 +908,7 @@ local function fishMainLoop()
         task.wait(SETTINGS.ScanInterval > 0 and SETTINGS.ScanInterval or 0)
     end
     State.DetectedKey = "None"
+    setHold(false)
     updateUI()
 end
 
@@ -1209,6 +1332,7 @@ FishToggle.MouseButton1Click:Connect(function()
         updateTimer()
         task.spawn(fishMainLoop)
     else
+        setHold(false)
         FishToggle.Text = "START FISHING"
         FishToggle.BackgroundColor3 = Color3.fromRGB(46, 204, 113)
         State.Status = "Stopped"
